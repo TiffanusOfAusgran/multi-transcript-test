@@ -1,0 +1,1064 @@
+<!DOCTYPE html>
+<html lang="es" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VozTexto MultiSpeaker - Transcripción con Identificación de Hablantes</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            speaker1: {
+              badge: '#059669',
+              light: '#34d399',
+              bg: 'rgba(16, 185, 129, 0.08)',
+              border: 'rgba(52, 211, 153, 0.3)',
+              text: '#6ee7b7'
+            },
+            speaker2: {
+              badge: '#2563eb',
+              light: '#60a5fa',
+              bg: 'rgba(59, 130, 246, 0.08)',
+              border: 'rgba(96, 165, 250, 0.3)',
+              text: '#93c5fd'
+            },
+            speaker3: {
+              badge: '#d97706',
+              light: '#fbbf24',
+              bg: 'rgba(245, 158, 11, 0.08)',
+              border: 'rgba(251, 191, 36, 0.3)',
+              text: '#fde68a'
+            },
+            speaker4: {
+              badge: '#9333ea',
+              light: '#c084fc',
+              bg: 'rgba(168, 85, 247, 0.08)',
+              border: 'rgba(192, 132, 252, 0.3)',
+              text: '#e9d5ff'
+            }
+          },
+          fontFamily: {
+            sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace']
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: rgba(15, 23, 42, 0.6);
+    }
+    ::-webkit-scrollbar-thumb {
+      background: rgba(148, 163, 184, 0.25);
+      border-radius: 9999px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: rgba(148, 163, 184, 0.45);
+    }
+    .speaker-card {
+      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .speaker-card:hover {
+      transform: translateY(-1px);
+    }
+    .glass-panel {
+      background: rgba(15, 23, 42, 0.75);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+    }
+    @keyframes pulse-ring {
+      0% { transform: scale(0.95); opacity: 0.8; }
+      50% { transform: scale(1.15); opacity: 0.3; }
+      100% { transform: scale(0.95); opacity: 0.8; }
+    }
+    .recording-ring {
+      animation: pulse-ring 2s infinite ease-in-out;
+    }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col font-sans selection:bg-indigo-500/30 selection:text-indigo-200">
+
+  <header class="border-b border-slate-800/80 bg-slate-900/80 backdrop-blur sticky top-0 z-40">
+    <div class="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between gap-4">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-500 via-purple-500 to-emerald-400 p-0.5 shadow-lg shadow-indigo-500/20">
+          <div class="w-full h-full bg-slate-950 rounded-[10px] flex items-center justify-center">
+            <i data-lucide="users" class="w-5 h-5 text-indigo-400"></i>
+          </div>
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <h1 class="font-bold text-base sm:text-lg tracking-tight text-white">VozTexto <span class="bg-gradient-to-r from-emerald-400 via-indigo-300 to-purple-400 bg-clip-text text-transparent">Diarize</span></h1>
+            <span class="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">Multi-Hablante</span>
+          </div>
+          <p class="text-xs text-slate-400 hidden sm:block">Transcripción con diferenciación de color por personas & análisis acústico</p>
+        </div>
+      </div>
+
+      <!-- Quick status & Mic live meter -->
+      <div class="flex items-center gap-3">
+        <div class="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-900/90 border border-slate-800">
+          <div id="micStatusDot" class="w-2.5 h-2.5 rounded-full bg-slate-500"></div>
+          <span id="micStatusLabel" class="text-xs font-medium text-slate-400">Inactivo</span>
+          <span id="pitchReadout" class="text-[11px] font-mono text-indigo-400/80 ml-1 hidden sm:inline">0 Hz</span>
+        </div>
+
+        <button id="toggleRecordBtn" class="flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-500 active:scale-95 transition shadow-lg shadow-indigo-600/25">
+          <i id="recordIcon" data-lucide="mic" class="w-4 h-4"></i>
+          <span id="recordLabel">Iniciar Transcripción</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-7xl w-full mx-auto px-4 py-5 flex-1 grid grid-cols-1 lg:grid-cols-12 gap-5">
+
+    <!-- Notification Banner -->
+    <div id="alertBanner" class="lg:col-span-12 hidden rounded-xl border p-3.5 flex items-center justify-between text-sm font-medium transition-all">
+      <div class="flex items-center gap-2.5">
+        <i id="alertIcon" data-lucide="info" class="w-4 h-4 shrink-0"></i>
+        <span id="alertText">Mensaje del sistema</span>
+      </div>
+      <button id="closeAlertBtn" class="text-slate-400 hover:text-white p-1">
+        <i data-lucide="x" class="w-4 h-4"></i>
+      </button>
+    </div>
+
+    <!-- Columna Izquierda: Panel de Hablantes y Controles de Reconocimiento (4 cols) -->
+    <aside class="lg:col-span-4 flex flex-col gap-4">
+
+      <!-- Hablante Activo & Selector Rápido -->
+      <div class="glass-panel border border-slate-800 rounded-2xl p-4.5 shadow-xl flex flex-col gap-3.5">
+        <div class="flex items-center justify-between">
+          <h2 class="text-xs font-semibold uppercase tracking-wider text-slate-400 flex items-center gap-2">
+            <i data-lucide="user-check" class="w-4 h-4 text-indigo-400"></i>
+            Hablante en Turno
+          </h2>
+          <span class="text-[11px] text-slate-500 font-mono">Teclas: [1] - [4]</span>
+        </div>
+
+        <!-- Botones de selección rápida de persona actual -->
+        <div class="grid grid-cols-2 gap-2" id="speakerSelectorGrid">
+          <!-- Populated by JS -->
+        </div>
+
+        <div class="pt-2 border-t border-slate-800/80 flex items-center justify-between">
+          <label class="flex items-center gap-2 text-xs text-slate-300 cursor-pointer select-none">
+            <input type="checkbox" id="autoPitchCheck" checked class="w-3.5 h-3.5 accent-indigo-500 rounded">
+            <span>Diarización acústica auto (Pitch)</span>
+          </label>
+          <span title="Sugiere al hablante en función del tono/frecuencia fundamental de su voz" class="text-slate-500 hover:text-slate-300 cursor-help">
+            <i data-lucide="help-circle" class="w-3.5 h-3.5"></i>
+          </span>
+        </div>
+      </div>
+
+      <!-- Espectro de Audio y Pitch en Tiempo Real -->
+      <div class="glass-panel border border-slate-800 rounded-2xl p-4 shadow-xl flex flex-col gap-2.5">
+        <div class="flex items-center justify-between text-xs">
+          <span class="text-slate-400 font-medium flex items-center gap-1.5">
+            <i data-lucide="activity" class="w-3.5 h-3.5 text-emerald-400"></i>
+            Frecuencia & Voz
+          </span>
+          <span id="detectedSpeakerBadge" class="text-[10px] font-bold px-2 py-0.5 rounded-md bg-slate-800 text-slate-300">
+            En espera
+          </span>
+        </div>
+        <!-- Visualizador Canvas -->
+        <div class="relative h-20 w-full bg-slate-900/90 rounded-xl overflow-hidden border border-slate-800/80">
+          <canvas id="visualizerCanvas" class="w-full h-full block"></canvas>
+          <div class="absolute bottom-1 right-2 text-[10px] font-mono text-slate-500" id="pitchIndicator">0 Hz</div>
+        </div>
+      </div>
+
+      <!-- Configuración de Hablantes (Nombres, Tonalidad) -->
+      <div class="glass-panel border border-slate-800 rounded-2xl p-4 shadow-xl flex flex-col gap-3 flex-1">
+        <div class="flex items-center justify-between">
+          <h2 class="text-xs font-semibold uppercase tracking-wider text-slate-400 flex items-center gap-2">
+            <i data-lucide="sliders" class="w-4 h-4 text-purple-400"></i>
+            Configurar Personas
+          </h2>
+          <span class="text-[11px] text-slate-500">Haz clic para editar nombre</span>
+        </div>
+
+        <div id="speakerSettingsList" class="flex flex-col gap-2.5 overflow-y-auto max-h-[300px] pr-1">
+          <!-- Generado dinámicamente con inputs de nombre de cada persona -->
+        </div>
+
+        <!-- Ajustes de Idioma y Pausas -->
+        <div class="pt-3 border-t border-slate-800/80 space-y-3 text-xs">
+          <div>
+            <label class="block text-slate-400 mb-1 font-medium">Idioma de reconocimiento:</label>
+            <select id="langSelector" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-1.5 text-slate-200 outline-none focus:ring-1 focus:ring-indigo-500">
+              <option value="es-ES">Español (España)</option>
+              <option value="es-MX">Español (México)</option>
+              <option value="es-CL" selected>Español (Chile)</option>
+              <option value="es-AR">Español (Argentina)</option>
+              <option value="es-CO">Español (Colombia)</option>
+              <option value="en-US">English (US)</option>
+              <option value="pt-BR">Português (Brasil)</option>
+            </select>
+          </div>
+
+          <div class="flex items-center justify-between text-slate-400">
+            <span>Separar turno por silencio:</span>
+            <span class="font-mono text-slate-200 font-bold">1.2s</span>
+          </div>
+        </div>
+      </div>
+
+    </aside>
+
+    <!-- Columna Derecha: Pantalla de Transcripción Principal (8 cols) -->
+    <section class="lg:col-span-8 flex flex-col gap-3">
+
+      <!-- Barra de Herramientas de la Transcripción -->
+      <div class="glass-panel border border-slate-800 rounded-2xl px-4 py-3 flex flex-wrap items-center justify-between gap-3 shadow-md">
+        <!-- Estadísticas -->
+        <div class="flex items-center gap-4 text-xs text-slate-400 font-medium">
+          <div class="flex items-center gap-1.5">
+            <i data-lucide="message-square" class="w-3.5 h-3.5 text-indigo-400"></i>
+            <span>Intervenciones: <strong id="totalTurns" class="text-white">0</strong></span>
+          </div>
+          <div class="flex items-center gap-1.5">
+            <i data-lucide="type" class="w-3.5 h-3.5 text-emerald-400"></i>
+            <span>Palabras: <strong id="totalWords" class="text-white">0</strong></span>
+          </div>
+        </div>
+
+        <!-- Botones de Acción -->
+        <div class="flex items-center gap-1.5">
+          <button id="copyMdBtn" title="Copiar todo en formato Markdown" class="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-xl bg-slate-900 border border-slate-800 text-slate-300 hover:text-white hover:border-slate-700 transition active:scale-95">
+            <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+            <span>Copiar</span>
+          </button>
+
+          <button id="exportTxtBtn" title="Exportar transcripción como TXT" class="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-xl bg-slate-900 border border-slate-800 text-slate-300 hover:text-white hover:border-slate-700 transition active:scale-95">
+            <i data-lucide="download" class="w-3.5 h-3.5"></i>
+            <span>Exportar .txt</span>
+          </button>
+
+          <button id="clearAllBtn" title="Borrar toda la transcripción" class="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-xl bg-slate-900 border border-rose-900/40 text-rose-400 hover:bg-rose-950/40 hover:border-rose-700/60 transition active:scale-95">
+            <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+            <span>Limpiar</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Área de Visualización de Transcripción con Diarización -->
+      <div id="transcriptContainer" class="flex-1 glass-panel border border-slate-800 rounded-2xl p-4 sm:p-6 flex flex-col gap-4 overflow-y-auto min-h-[460px] max-h-[calc(100vh-220px)] relative">
+        
+        <!-- Estado Vacío Inicial -->
+        <div id="emptyState" class="flex flex-col items-center justify-center h-full my-auto text-center py-16 text-slate-500">
+          <div class="w-14 h-14 rounded-2xl bg-slate-900 border border-slate-800 flex items-center justify-center mb-3">
+            <i data-lucide="speech" class="w-7 h-7 text-indigo-400"></i>
+          </div>
+          <h3 class="text-base font-semibold text-slate-300 mb-1">Transcripción Multi-Hablante Lista</h3>
+          <p class="text-xs max-w-sm text-slate-500 mb-4">
+            Presiona <strong class="text-indigo-400">"Iniciar Transcripción"</strong>. Puedes alternar personas con las teclas [1], [2], [3] o [4], o dejar que el sistema analice el tono de voz.
+          </p>
+          <div class="flex flex-wrap justify-center gap-2 text-[11px]">
+            <span class="px-2.5 py-1 rounded-lg bg-emerald-950/60 border border-emerald-500/30 text-emerald-300">Persona 1: Esmeralda</span>
+            <span class="px-2.5 py-1 rounded-lg bg-blue-950/60 border border-blue-500/30 text-blue-300">Persona 2: Azul</span>
+            <span class="px-2.5 py-1 rounded-lg bg-amber-950/60 border border-amber-500/30 text-amber-300">Persona 3: Ámbar</span>
+            <span class="px-2.5 py-1 rounded-lg bg-purple-950/60 border border-purple-500/30 text-purple-300">Persona 4: Púrpura</span>
+          </div>
+        </div>
+
+        <!-- Lista de Bloques de Diálogo -->
+        <div id="blocksList" class="flex flex-col gap-3.5">
+          <!-- Inserted dynamically -->
+        </div>
+
+        <!-- Bloque Activo en Vivo (Interim) -->
+        <div id="liveTurnCard" class="hidden speaker-card rounded-2xl p-4 border transition-all duration-150">
+          <div class="flex items-center justify-between mb-2">
+            <div class="flex items-center gap-2">
+              <span id="liveSpeakerBadge" class="text-xs font-semibold px-2.5 py-0.5 rounded-full flex items-center gap-1.5 shadow-sm">
+                <!-- Live Speaker Name -->
+              </span>
+              <span class="text-[11px] font-mono text-slate-400 flex items-center gap-1">
+                <i data-lucide="clock" class="w-3 h-3"></i>
+                <span id="liveTimestamp">00:00:00</span>
+              </span>
+            </div>
+            <div class="flex items-center gap-1.5">
+              <span class="w-2 h-2 rounded-full bg-rose-500 animate-ping"></span>
+              <span class="text-[10px] uppercase font-bold tracking-wider text-rose-400">Hablando ahora</span>
+            </div>
+          </div>
+          <!-- Contenido en vivo -->
+          <p class="text-sm sm:text-base leading-relaxed font-sans" id="liveTextContainer">
+            <span id="liveConfirmedText" class="text-slate-100 font-medium"></span>
+            <span id="liveInterimText" class="italic opacity-80"></span>
+          </p>
+        </div>
+
+      </div>
+
+      <!-- Leyenda y atajos al pie -->
+      <div class="flex items-center justify-between text-[11px] text-slate-500 px-2">
+        <div class="flex items-center gap-2">
+          <i data-lucide="keyboard" class="w-3.5 h-3.5 text-slate-400"></i>
+          <span>Atajos de teclado: Pulsa <kbd class="px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700">1</kbd>, <kbd class="px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700">2</kbd>, <kbd class="px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700">3</kbd>, <kbd class="px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700">4</kbd> para cambiar de persona en vivo.</span>
+        </div>
+        <span id="silenceTimerIndicator" class="hidden font-mono text-slate-400">Silencio: 0.0s</span>
+      </div>
+
+    </section>
+
+  </main>
+
+  <script>
+    // Configuración visual y metadatos de los 4 hablantes
+    const SPEAKERS = [
+      {
+        id: 1,
+        name: 'Hablante 1',
+        role: 'Persona 1',
+        theme: 'emerald',
+        badgeBg: 'bg-emerald-500 text-slate-950 font-bold',
+        cardBg: 'bg-emerald-950/20 border-emerald-500/30',
+        textColor: 'text-emerald-300',
+        borderActive: 'border-emerald-400 ring-2 ring-emerald-500/30',
+        freqRange: [85, 155] // Tono masculino grave promedio (Hz)
+      },
+      {
+        id: 2,
+        name: 'Hablante 2',
+        role: 'Persona 2',
+        theme: 'blue',
+        badgeBg: 'bg-blue-500 text-slate-950 font-bold',
+        cardBg: 'bg-blue-950/20 border-blue-500/30',
+        textColor: 'text-blue-300',
+        borderActive: 'border-blue-400 ring-2 ring-blue-500/30',
+        freqRange: [156, 215] // Tono intermedio (Hz)
+      },
+      {
+        id: 3,
+        name: 'Hablante 3',
+        role: 'Persona 3',
+        theme: 'amber',
+        badgeBg: 'bg-amber-400 text-slate-950 font-bold',
+        cardBg: 'bg-amber-950/20 border-amber-500/30',
+        textColor: 'text-amber-200',
+        borderActive: 'border-amber-400 ring-2 ring-amber-500/30',
+        freqRange: [216, 280] // Tono más agudo / femenino (Hz)
+      },
+      {
+        id: 4,
+        name: 'Hablante 4',
+        role: 'Persona 4',
+        theme: 'purple',
+        badgeBg: 'bg-purple-500 text-slate-950 font-bold',
+        cardBg: 'bg-purple-950/20 border-purple-500/30',
+        textColor: 'text-purple-300',
+        borderActive: 'border-purple-400 ring-2 ring-purple-500/30',
+        freqRange: [281, 450] // Tono muy agudo (Hz)
+      }
+    ];
+
+    // Variables de Estado
+    let currentSpeakerId = 1;
+    let isListening = false;
+    let recognition = null;
+    let audioCtx = null;
+    let analyserNode = null;
+    let micStream = null;
+    let animFrameId = null;
+
+    // Buffer de transcripciones completadas
+    // Item: { id, speakerId, timestamp, text }
+    const transcriptBlocks = [];
+
+    // Estado del turno activo
+    let activeTurnText = '';
+    let lastSpokenTime = Date.now();
+    let silenceCheckInterval = null;
+    const SILENCE_THRESHOLD_MS = 1300; // 1.3s de silencio corta en nuevo turno
+    let currentPitchHz = 0;
+
+    // Elementos DOM
+    const toggleRecordBtn = document.getElementById('toggleRecordBtn');
+    const recordIcon = document.getElementById('recordIcon');
+    const recordLabel = document.getElementById('recordLabel');
+    const micStatusDot = document.getElementById('micStatusDot');
+    const micStatusLabel = document.getElementById('micStatusLabel');
+    const pitchReadout = document.getElementById('pitchReadout');
+    const detectedSpeakerBadge = document.getElementById('detectedSpeakerBadge');
+    const pitchIndicator = document.getElementById('pitchIndicator');
+    const langSelector = document.getElementById('langSelector');
+    const autoPitchCheck = document.getElementById('autoPitchCheck');
+    const speakerSelectorGrid = document.getElementById('speakerSelectorGrid');
+    const speakerSettingsList = document.getElementById('speakerSettingsList');
+    const transcriptContainer = document.getElementById('transcriptContainer');
+    const blocksList = document.getElementById('blocksList');
+    const emptyState = document.getElementById('emptyState');
+    const liveTurnCard = document.getElementById('liveTurnCard');
+    const liveSpeakerBadge = document.getElementById('liveSpeakerBadge');
+    const liveTimestamp = document.getElementById('liveTimestamp');
+    const liveConfirmedText = document.getElementById('liveConfirmedText');
+    const liveInterimText = document.getElementById('liveInterimText');
+    const totalTurnsEl = document.getElementById('totalTurns');
+    const totalWordsEl = document.getElementById('totalWords');
+    const copyMdBtn = document.getElementById('copyMdBtn');
+    const exportTxtBtn = document.getElementById('exportTxtBtn');
+    const clearAllBtn = document.getElementById('clearAllBtn');
+    const alertBanner = document.getElementById('alertBanner');
+    const alertText = document.getElementById('alertText');
+    const alertIcon = document.getElementById('alertIcon');
+    const closeAlertBtn = document.getElementById('closeAlertBtn');
+    const silenceTimerIndicator = document.getElementById('silenceTimerIndicator');
+    const visualizerCanvas = document.getElementById('visualizerCanvas');
+    const canvasCtx = visualizerCanvas.getContext('2d');
+
+    function renderSpeakerSelector() {
+      speakerSelectorGrid.innerHTML = '';
+      SPEAKERS.forEach(spk => {
+        const isCurrent = spk.id === currentSpeakerId;
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = `flex items-center gap-2 p-2.5 rounded-xl border text-left transition-all ${
+          isCurrent 
+            ? `${spk.cardBg} ${spk.borderActive} shadow-md` 
+            : 'bg-slate-900/60 border-slate-800 hover:border-slate-700 text-slate-400'
+        }`;
+        btn.innerHTML = `
+          <div class="w-3.5 h-3.5 rounded-full shrink-0 ${spk.badgeBg}"></div>
+          <div class="overflow-hidden flex-1">
+            <div class="text-xs font-bold truncate ${isCurrent ? spk.textColor : 'text-slate-200'}">${spk.name}</div>
+            <div class="text-[10px] text-slate-500 font-mono">Tecla [${spk.id}]</div>
+          </div>
+        `;
+        btn.onclick = () => setSpeaker(spk.id);
+        speakerSelectorGrid.appendChild(btn);
+      });
+    }
+
+    function renderSpeakerSettings() {
+      speakerSettingsList.innerHTML = '';
+      SPEAKERS.forEach(spk => {
+        const item = document.createElement('div');
+        item.className = 'flex items-center gap-2.5 p-2 rounded-xl bg-slate-900/70 border border-slate-800/80';
+        item.innerHTML = `
+          <div class="w-3 h-3 rounded-full ${spk.badgeBg} shrink-0"></div>
+          <input 
+            type="text" 
+            value="${spk.name}" 
+            data-id="${spk.id}"
+            class="speaker-name-input bg-transparent text-xs font-semibold text-slate-200 focus:text-white outline-none flex-1 border-b border-transparent focus:border-slate-600 px-1 py-0.5"
+            placeholder="Nombre persona"
+          />
+          <span class="text-[10px] font-mono text-slate-500 px-1.5 py-0.5 rounded bg-slate-950 border border-slate-800">${spk.freqRange[0]}-${spk.freqRange[1]}Hz</span>
+        `;
+        speakerSettingsList.appendChild(item);
+      });
+
+      // Escuchar cambios de nombres
+      document.querySelectorAll('.speaker-name-input').forEach(input => {
+        input.addEventListener('change', (e) => {
+          const id = parseInt(e.target.getAttribute('data-id'), 10);
+          const spk = SPEAKERS.find(s => s.id === id);
+          if (spk && e.target.value.trim()) {
+            spk.name = e.target.value.trim();
+            renderSpeakerSelector();
+            updateLiveBadge();
+            renderAllBlocks();
+            notify(`Nombre actualizado: ${spk.name}`, 'info');
+          }
+        });
+      });
+    }
+
+    function setSpeaker(id, reason = 'manual') {
+      if (currentSpeakerId === id) return;
+      
+      // Si ya hay texto en el turno activo, sellar el bloque antes de cambiar
+      if (activeTurnText.trim().length > 0) {
+        commitCurrentTurn();
+      }
+
+      currentSpeakerId = id;
+      renderSpeakerSelector();
+      updateLiveBadge();
+
+      const spk = SPEAKERS.find(s => s.id === id);
+      if (reason === 'auto') {
+        detectedSpeakerBadge.innerText = `Auto: ${spk.name}`;
+        detectedSpeakerBadge.className = `text-[10px] font-bold px-2 py-0.5 rounded-md ${spk.badgeBg}`;
+      }
+    }
+
+    function updateLiveBadge() {
+      const spk = SPEAKERS.find(s => s.id === currentSpeakerId);
+      if (!spk) return;
+
+      liveSpeakerBadge.className = `text-xs font-semibold px-2.5 py-0.5 rounded-full flex items-center gap-1.5 shadow-sm ${spk.badgeBg}`;
+      liveSpeakerBadge.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-black/40"></span>${spk.name}`;
+      
+      liveTurnCard.className = `speaker-card rounded-2xl p-4 border transition-all duration-150 ${spk.cardBg} ${spk.borderActive}`;
+      liveInterimText.className = `italic ${spk.textColor}`;
+    }
+
+    async function initAudioAnalysis() {
+      try {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          notify('Tu navegador no permite acceso al micrófono con MediaDevices.', 'warning');
+          return;
+        }
+
+        micStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        analyserNode = audioCtx.createAnalyser();
+        analyserNode.fftSize = 2048;
+        analyserNode.smoothingTimeConstant = 0.85;
+
+        const source = audioCtx.createMediaStreamSource(micStream);
+        source.connect(analyserNode);
+
+        drawVisualizer();
+      } catch (err) {
+        console.warn('AudioContext no inicializado:', err);
+      }
+    }
+
+    // Algoritmo de autocorrelación para estimar tono fundamental (Pitch / F0 en Hz)
+    function detectPitch(buffer, sampleRate) {
+      let sum = 0;
+      for (let i = 0; i < buffer.length; i++) {
+        sum += buffer[i] * buffer[i];
+      }
+      const rms = Math.sqrt(sum / buffer.length);
+      // Ignorar si el volumen es muy bajo (ruido ambiental de fondo)
+      if (rms < 0.02) return -1;
+
+      // Autocorrelación para rangos de voz humana (80Hz a 450Hz)
+      const minPeriod = Math.floor(sampleRate / 450);
+      const maxPeriod = Math.floor(sampleRate / 75);
+      let bestCorrelation = 0;
+      let bestPeriod = -1;
+
+      for (let period = minPeriod; period <= maxPeriod; period++) {
+        let corr = 0;
+        for (let i = 0; i < buffer.length - period; i++) {
+          corr += buffer[i] * buffer[i + period];
+        }
+        if (corr > bestCorrelation) {
+          bestCorrelation = corr;
+          bestPeriod = period;
+        }
+      }
+
+      if (bestPeriod > 0 && bestCorrelation > 0.3) {
+        return Math.round(sampleRate / bestPeriod);
+      }
+      return -1;
+    }
+
+    function drawVisualizer() {
+      if (!analyserNode) return;
+
+      const bufferLength = analyserNode.fftSize;
+      const timeData = new Float32Array(bufferLength);
+      const freqData = new Uint8Array(analyserNode.frequencyBinCount);
+
+      const render = () => {
+        animFrameId = requestAnimationFrame(render);
+        
+        analyserNode.getFloatTimeDomainData(timeData);
+        analyserNode.getByteFrequencyData(freqData);
+
+        // Estimar pitch actual
+        const pitch = detectPitch(timeData, audioCtx.sampleRate);
+        if (pitch > 60 && pitch < 500) {
+          currentPitchHz = pitch;
+          pitchReadout.innerText = `${pitch} Hz`;
+          pitchIndicator.innerText = `${pitch} Hz`;
+
+          // Diarización acústica asistida si está activada
+          if (autoPitchCheck.checked && isListening) {
+            evaluatePitchSpeaker(pitch);
+          }
+        }
+
+        // Dibujar en canvas
+        const width = visualizerCanvas.width = visualizerCanvas.offsetWidth;
+        const height = visualizerCanvas.height = visualizerCanvas.offsetHeight;
+        canvasCtx.clearRect(0, 0, width, height);
+
+        // Dibujar barras sutiles de espectro
+        const barWidth = (width / 40);
+        let x = 0;
+        for (let i = 0; i < 40; i++) {
+          const val = freqData[i * 4] || 0;
+          const barHeight = (val / 255) * height;
+
+          const currentSpk = SPEAKERS.find(s => s.id === currentSpeakerId);
+          canvasCtx.fillStyle = isListening ? 'rgba(99, 102, 241, 0.45)' : 'rgba(100, 116, 139, 0.2)';
+          canvasCtx.fillRect(x, height - barHeight, barWidth - 1.5, barHeight);
+          x += barWidth;
+        }
+
+        // Dibujar onda en el centro
+        canvasCtx.lineWidth = 1.8;
+        const currentSpk = SPEAKERS.find(s => s.id === currentSpeakerId);
+        canvasCtx.strokeStyle = isListening ? '#34d399' : '#64748b';
+        canvasCtx.beginPath();
+        const sliceWidth = width / bufferLength;
+        let waveX = 0;
+        for (let i = 0; i < bufferLength; i += 8) {
+          const v = timeData[i] * 0.9;
+          const y = (height / 2) + (v * (height / 2));
+          if (i === 0) canvasCtx.moveTo(waveX, y);
+          else canvasCtx.lineTo(waveX, y);
+          waveX += sliceWidth * 8;
+        }
+        canvasCtx.stroke();
+      };
+      render();
+    }
+
+    // Clasificador asistido por tono/pitch
+    let pitchStreakCount = 0;
+    let candidateSpeakerId = currentSpeakerId;
+
+    function evaluatePitchSpeaker(pitch) {
+      let matched = SPEAKERS.find(s => pitch >= s.freqRange[0] && pitch <= s.freqRange[1]);
+      if (!matched) return;
+
+      if (matched.id === candidateSpeakerId) {
+        pitchStreakCount++;
+      } else {
+        candidateSpeakerId = matched.id;
+        pitchStreakCount = 1;
+      }
+
+      // Requiere persistencia en el tono para evitar falsos positivos
+      if (pitchStreakCount >= 7 && candidateSpeakerId !== currentSpeakerId) {
+        setSpeaker(candidateSpeakerId, 'auto');
+        pitchStreakCount = 0;
+      }
+    }
+
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+    function initSpeechEngine() {
+      if (!SpeechRecognition) {
+        notify('Tu navegador no cuenta con la SpeechRecognition API. Te recomendamos Google Chrome o Microsoft Edge.', 'warning');
+        toggleRecordBtn.disabled = true;
+        toggleRecordBtn.classList.add('opacity-50', 'cursor-not-allowed');
+        return null;
+      }
+
+      const rec = new SpeechRecognition();
+      rec.continuous = true;
+      rec.interimResults = true;
+      rec.lang = langSelector.value;
+
+      rec.onstart = () => {
+        isListening = true;
+        setMicUI(true);
+        liveTurnCard.classList.remove('hidden');
+        emptyState.classList.add('hidden');
+        liveTimestamp.innerText = getFormattedTime();
+        startSilenceWatcher();
+      };
+
+      rec.onresult = (event) => {
+        lastSpokenTime = Date.now();
+        let interimText = '';
+
+        for (let i = event.resultIndex; i < event.results.length; ++i) {
+          const segment = event.results[i][0].transcript;
+          if (event.results[i].isFinal) {
+            activeTurnText += (activeTurnText.length > 0 && !activeTurnText.endsWith(' ') ? ' ' : '') + segment.trim() + ' ';
+            liveConfirmedText.innerText = activeTurnText;
+            liveInterimText.innerText = '';
+          } else {
+            interimText += segment;
+          }
+        }
+
+        liveInterimText.innerText = interimText ? (activeTurnText.length > 0 ? ' ' : '') + interimText : '';
+        transcriptContainer.scrollTop = transcriptContainer.scrollHeight;
+        updateWordMetrics();
+      };
+
+      rec.onerror = (event) => {
+        console.warn('SpeechRecognition error:', event.error);
+        if (event.error === 'not-allowed') {
+          notify('Permiso de micrófono denegado. Permite el acceso para transcribir.', 'error');
+          stopTranscription();
+        }
+      };
+
+      rec.onend = () => {
+        // Si sigue activo por decisión de usuario, reiniciar (mantiene sesión activa en Chrome)
+        if (isListening) {
+          try {
+            rec.start();
+          } catch (e) {
+            // Manejado silenciosamente
+          }
+        } else {
+          setMicUI(false);
+          commitCurrentTurn();
+          liveTurnCard.classList.add('hidden');
+          stopSilenceWatcher();
+        }
+      };
+
+      return rec;
+    }
+
+    function commitCurrentTurn() {
+      const confirmed = activeTurnText.trim();
+      if (!confirmed) return;
+
+      const newBlock = {
+        id: Date.now() + Math.random(),
+        speakerId: currentSpeakerId,
+        timestamp: getFormattedTime(),
+        text: confirmed
+      };
+
+      transcriptBlocks.push(newBlock);
+      activeTurnText = '';
+      liveConfirmedText.innerText = '';
+      liveInterimText.innerText = '';
+      liveTimestamp.innerText = getFormattedTime();
+
+      renderBlock(newBlock);
+      updateCounters();
+      transcriptContainer.scrollTop = transcriptContainer.scrollHeight;
+    }
+
+    function renderBlock(block) {
+      emptyState.classList.add('hidden');
+      const spk = SPEAKERS.find(s => s.id === block.speakerId) || SPEAKERS[0];
+
+      const blockEl = document.createElement('div');
+      blockEl.id = `block-${block.id}`;
+      blockEl.className = `speaker-card rounded-2xl p-4 border transition-all ${spk.cardBg} ${spk.borderActive || 'border-slate-800'}`;
+      
+      blockEl.innerHTML = `
+        <div class="flex items-center justify-between mb-2">
+          <div class="flex items-center gap-2">
+            <!-- Badge de hablante con menú rápido de cambio -->
+            <div class="relative group">
+              <button class="speaker-pill text-xs font-semibold px-2.5 py-0.5 rounded-full flex items-center gap-1.5 shadow-sm ${spk.badgeBg} hover:opacity-90 transition">
+                <span class="w-1.5 h-1.5 rounded-full bg-black/40"></span>
+                <span>${spk.name}</span>
+                <i data-lucide="chevron-down" class="w-3 h-3 opacity-60"></i>
+              </button>
+
+              <!-- Dropdown para reasignar hablante -->
+              <div class="absolute left-0 top-full mt-1 hidden group-hover:flex flex-col bg-slate-900 border border-slate-700 rounded-xl p-1 shadow-2xl z-20 min-w-[140px]">
+                <div class="text-[10px] font-bold text-slate-400 px-2 py-1 uppercase tracking-wider">Cambiar persona:</div>
+                ${SPEAKERS.map(s => `
+                  <button type="button" onclick="reassignBlock(${block.id}, ${s.id})" class="flex items-center gap-2 px-2 py-1.5 text-xs rounded-lg hover:bg-slate-800 text-slate-200">
+                    <span class="w-2.5 h-2.5 rounded-full ${s.badgeBg}"></span>
+                    <span>${s.name}</span>
+                  </button>
+                `).join('')}
+              </div>
+            </div>
+
+            <!-- Marca de tiempo -->
+            <span class="text-[11px] font-mono text-slate-400 flex items-center gap-1">
+              <i data-lucide="clock" class="w-3 h-3"></i>
+              <span>${block.timestamp}</span>
+            </span>
+          </div>
+
+          <!-- Acciones de bloque -->
+          <div class="flex items-center gap-1 text-slate-400">
+            <button onclick="copySingleBlock(${block.id})" title="Copiar intervención" class="p-1 hover:text-slate-200 rounded-lg hover:bg-slate-800/80 transition">
+              <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+            </button>
+            <button onclick="deleteBlock(${block.id})" title="Eliminar intervención" class="p-1 hover:text-rose-400 rounded-lg hover:bg-slate-800/80 transition">
+              <i data-lucide="trash" class="w-3.5 h-3.5"></i>
+            </button>
+          </div>
+        </div>
+
+        <!-- Texto con color característico de la persona -->
+        <p class="text-sm sm:text-base leading-relaxed ${spk.textColor} font-sans select-text whitespace-pre-wrap">${block.text}</p>
+      `;
+
+      blocksList.appendChild(blockEl);
+      lucide.createIcons();
+    }
+
+    function renderAllBlocks() {
+      blocksList.innerHTML = '';
+      if (transcriptBlocks.length === 0 && !activeTurnText) {
+        emptyState.classList.remove('hidden');
+      } else {
+        emptyState.classList.add('hidden');
+        transcriptBlocks.forEach(renderBlock);
+      }
+      updateCounters();
+    }
+
+    window.reassignBlock = function(blockId, newSpeakerId) {
+      const block = transcriptBlocks.find(b => b.id === blockId);
+      if (block) {
+        block.speakerId = newSpeakerId;
+        renderAllBlocks();
+        const spk = SPEAKERS.find(s => s.id === newSpeakerId);
+        notify(`Intervención reasignada a ${spk.name}`, 'info');
+      }
+    };
+
+    window.copySingleBlock = function(blockId) {
+      const block = transcriptBlocks.find(b => b.id === blockId);
+      if (!block) return;
+      const spk = SPEAKERS.find(s => s.id === block.speakerId);
+      const text = `[${block.timestamp}] ${spk.name}: ${block.text}`;
+      safeCopyToClipboard(text, 'Intervención copiada');
+    };
+
+    window.deleteBlock = function(blockId) {
+      const idx = transcriptBlocks.findIndex(b => b.id === blockId);
+      if (idx !== -1) {
+        transcriptBlocks.splice(idx, 1);
+        renderAllBlocks();
+      }
+    };
+
+    function startSilenceWatcher() {
+      stopSilenceWatcher();
+      silenceTimerIndicator.classList.remove('hidden');
+
+      silenceCheckInterval = setInterval(() => {
+        if (!isListening) return;
+
+        const silentElapsed = Date.now() - lastSpokenTime;
+        silenceTimerIndicator.innerText = `Silencio: ${(silentElapsed / 1000).toFixed(1)}s`;
+
+        // Si ha habido silencio superior al umbral y hay texto acumulado, crear nuevo turno
+        if (silentElapsed > SILENCE_THRESHOLD_MS && activeTurnText.trim().length > 0) {
+          commitCurrentTurn();
+        }
+      }, 300);
+    }
+
+    function stopSilenceWatcher() {
+      if (silenceCheckInterval) {
+        clearInterval(silenceCheckInterval);
+        silenceCheckInterval = null;
+      }
+      silenceTimerIndicator.classList.add('hidden');
+    }
+
+    async function startTranscription() {
+      if (!recognition) {
+        recognition = initSpeechEngine();
+      }
+      if (!recognition) return;
+
+      recognition.lang = langSelector.value;
+      try {
+        if (!audioCtx) {
+          await initAudioAnalysis();
+        } else if (audioCtx.state === 'suspended') {
+          await audioCtx.resume();
+        }
+        recognition.start();
+        isListening = true;
+      } catch (err) {
+        console.warn('Error al iniciar reconocimiento:', err);
+      }
+    }
+
+    function stopTranscription() {
+      isListening = false;
+      if (recognition) {
+        recognition.stop();
+      }
+      setMicUI(false);
+    }
+
+    function setMicUI(active) {
+      if (active) {
+        toggleRecordBtn.className = 'flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold text-white bg-rose-600 hover:bg-rose-500 active:scale-95 transition shadow-lg shadow-rose-600/30';
+        recordLabel.innerText = 'Detener';
+        recordIcon.setAttribute('data-lucide', 'square');
+        micStatusDot.className = 'w-2.5 h-2.5 rounded-full bg-rose-500 animate-ping';
+        micStatusLabel.innerText = 'Grabando';
+        micStatusLabel.className = 'text-xs font-semibold text-rose-400';
+      } else {
+        toggleRecordBtn.className = 'flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-500 active:scale-95 transition shadow-lg shadow-indigo-600/25';
+        recordLabel.innerText = 'Iniciar Transcripción';
+        recordIcon.setAttribute('data-lucide', 'mic');
+        micStatusDot.className = 'w-2.5 h-2.5 rounded-full bg-slate-500';
+        micStatusLabel.innerText = 'Inactivo';
+        micStatusLabel.className = 'text-xs font-medium text-slate-400';
+      }
+      lucide.createIcons();
+    }
+
+    function updateWordMetrics() {
+      const allText = transcriptBlocks.map(b => b.text).join(' ') + ' ' + activeTurnText;
+      const words = allText.trim() ? allText.trim().split(/\s+/).length : 0;
+      totalWordsEl.innerText = words;
+    }
+
+    function updateCounters() {
+      totalTurnsEl.innerText = transcriptBlocks.length;
+      updateWordMetrics();
+    }
+
+    function getFormattedTime() {
+      const now = new Date();
+      return now.toTimeString().split(' ')[0];
+    }
+
+    // Notificaciones integradas tipo Toast
+    function notify(message, type = 'info') {
+      alertBanner.classList.remove('hidden', 'bg-rose-950/80', 'border-rose-700/60', 'text-rose-200', 'bg-indigo-950/80', 'border-indigo-700/60', 'text-indigo-200');
+      
+      if (type === 'error' || type === 'warning') {
+        alertBanner.classList.add('bg-rose-950/80', 'border-rose-700/60', 'text-rose-200');
+        alertIcon.setAttribute('data-lucide', 'alert-circle');
+      } else {
+        alertBanner.classList.add('bg-indigo-950/80', 'border-indigo-700/60', 'text-indigo-200');
+        alertIcon.setAttribute('data-lucide', 'info');
+      }
+
+      alertText.innerText = message;
+      lucide.createIcons();
+
+      setTimeout(() => {
+        alertBanner.classList.add('hidden');
+      }, 4000);
+    }
+
+    function safeCopyToClipboard(text, successMsg = 'Copiado al portapapeles') {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      document.body.appendChild(ta);
+      ta.select();
+      try {
+        document.execCommand('copy');
+        notify(successMsg, 'info');
+      } catch (e) {
+        notify('No se pudo copiar automáticamente', 'error');
+      }
+      document.body.removeChild(ta);
+    }
+
+    toggleRecordBtn.addEventListener('click', () => {
+      if (isListening) {
+        stopTranscription();
+      } else {
+        startTranscription();
+      }
+    });
+
+    langSelector.addEventListener('change', () => {
+      if (recognition && isListening) {
+        stopTranscription();
+        setTimeout(startTranscription, 250);
+      }
+    });
+
+    closeAlertBtn.addEventListener('click', () => {
+      alertBanner.classList.add('hidden');
+    });
+
+    // Copiar todo en formato Markdown
+    copyMdBtn.addEventListener('click', () => {
+      if (transcriptBlocks.length === 0 && !activeTurnText) {
+        notify('No hay transcripción disponible para copiar.', 'warning');
+        return;
+      }
+      commitCurrentTurn();
+
+      let markdown = `# Transcripción Multi-Hablante\n_Generado: ${new Date().toLocaleString()}_\n\n`;
+      transcriptBlocks.forEach(b => {
+        const spk = SPEAKERS.find(s => s.id === b.speakerId);
+        markdown += `**[${b.timestamp}] ${spk.name}:**\n${b.text}\n\n`;
+      });
+
+      safeCopyToClipboard(markdown, '¡Transcripción en Markdown copiada!');
+    });
+
+    // Exportar archivo .txt con timestamps y personas
+    exportTxtBtn.addEventListener('click', () => {
+      if (transcriptBlocks.length === 0 && !activeTurnText) {
+        notify('La transcripción está vacía.', 'warning');
+        return;
+      }
+      commitCurrentTurn();
+
+      let txt = `TRANSCRIPCIÓN DE DIÁLOGO MULTI-HABLANTE\nFecha: ${new Date().toLocaleString()}\n`;
+      txt += `----------------------------------------------------\n\n`;
+
+      transcriptBlocks.forEach(b => {
+        const spk = SPEAKERS.find(s => s.id === b.speakerId);
+        txt += `[${b.timestamp}] ${spk.name.toUpperCase()}:\n${b.text}\n\n`;
+      });
+
+      const blob = new Blob([txt], { type: 'text/plain;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `transcripcion-hablantes-${Date.now()}.txt`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      notify('Archivo .txt descargado', 'info');
+    });
+
+    // Limpiar toda la transcripción
+    clearAllBtn.addEventListener('click', () => {
+      if (transcriptBlocks.length === 0 && !activeTurnText) return;
+
+      transcriptBlocks.length = 0;
+      activeTurnText = '';
+      liveConfirmedText.innerText = '';
+      liveInterimText.innerText = '';
+      renderAllBlocks();
+      notify('Transcripción borrada por completo', 'info');
+    });
+
+    // Atajos de teclado para alternar persona al instante (1, 2, 3, 4)
+    window.addEventListener('keydown', (e) => {
+      // Ignorar si el usuario está escribiendo en el input de renombrar persona
+      if (['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName)) return;
+
+      if (['1', '2', '3', '4'].includes(e.key)) {
+        const id = parseInt(e.key, 10);
+        setSpeaker(id, 'manual');
+        const spk = SPEAKERS.find(s => s.id === id);
+        notify(`Turno cambiado manualmente a: ${spk.name}`, 'info');
+      } else if (e.code === 'Space' && e.ctrlKey) {
+        // Ctrl + Espacio para alternar grabación rápidamente
+        e.preventDefault();
+        toggleRecordBtn.click();
+      }
+    });
+
+    window.addEventListener('DOMContentLoaded', () => {
+      renderSpeakerSelector();
+      renderSpeakerSettings();
+      updateLiveBadge();
+      lucide.createIcons();
+    });
+  </script>
+</body>
+</html>
